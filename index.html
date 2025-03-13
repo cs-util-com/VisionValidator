@@ -129,7 +129,10 @@ IMPORTANT: Only respond with valid JSON.`
           },
           {
             type: "image_url",
-            image_url: base64Image
+            image_url: {
+              url: base64Image,
+              detail: "auto"
+            }
           }
         ]
       });
