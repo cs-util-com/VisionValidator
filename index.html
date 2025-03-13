@@ -25,20 +25,20 @@ additional explanations what you change are nice to have but not necessary.
     In production, you may want to pin specific versions or bundle these dependencies.
     The lines below illustrate direct CDN usage for demonstration only.
   -->
-  <!-- Ajv for JSON schema validation -->
-  <script src="https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.min.js"></script>
   
-  <!-- Example: unpkg link to LangChain.js (this might not be the exact version you need).
-       For the latest usage, see official docs: https://github.com/hwchase17/langchainjs -->
+  <!-- Using direct ESM imports instead of importmap -->
   <script type="module">
-    import { ChatOpenAI } from "https://unpkg.com/langchain@0.0.36/dist/chat_models/openai.js";
-    import { HumanChatMessage, SystemChatMessage } from "https://unpkg.com/langchain@0.0.36/dist/schema/index.js";
+    // Direct imports from CDN with specific versions
+    import { ChatOpenAI } from "https://cdn.jsdelivr.net/npm/@langchain/openai@0.0.14/+esm";
+    import { HumanMessage, SystemMessage } from "https://cdn.jsdelivr.net/npm/@langchain/core@0.1.17/messages/+esm";
+    // Import standard Ajv without depending on draft-2020 support
+    import Ajv from "https://cdn.jsdelivr.net/npm/ajv@8.12.0/+esm";
 
     // =======================
     // 1) Define our JSON Schema
     // =======================
     const boundingBoxSchema = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
+      // Remove the $schema reference that's causing the issue
       $id: "https://example.com/my-bbox-schema.json",
       type: "object",
       title: "Image Bounding Box Schema",
@@ -84,8 +84,13 @@ additional explanations what you change are nice to have but not necessary.
       additionalProperties: true
     };
 
-    // Create an Ajv instance for validation
-    const ajv = new Ajv();
+    // Create an Ajv instance with more permissive options
+    const ajv = new Ajv({
+      strict: false,
+      strictSchema: false,
+      strictTypes: false,
+      validateSchema: false // Skip schema validation entirely
+    });
     const validateBoundingBoxes = ajv.compile(boundingBoxSchema);
 
     // =======================
@@ -95,26 +100,26 @@ additional explanations what you change are nice to have but not necessary.
     // or in a safe location. For demonstration, we read from a global variable 
     // (this won't work in all environments).
     const chat = new ChatOpenAI({
-      openAIApiKey: "", // <-- Enter your API key here
+      openAIApiKey: "...", // <-- Enter your API key here
       temperature: 0
     });
 
     // Helper function to call the model with a prompt that references the image
     async function requestBoundingBoxes(base64Image) {
       // This is a simplistic prompt. Real usage might differ:
-      const systemPrompt = new SystemChatMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
+      const systemPrompt = new SystemMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
       
       // For demonstration, we do a textual prompt describing the image. 
       // If you had a specialized model that can handle images, you'd supply 
       // the base64 data or a URL differently.
-      const humanPrompt = new HumanChatMessage(`Here is an image in base64:\n\n${base64Image}\n\nReturn a JSON with the following schema:
+      const humanPrompt = new HumanMessage(`Here is an image in base64:\n\n${base64Image}\n\nReturn a JSON with the following schema:
       ${JSON.stringify(boundingBoxSchema, null, 2)}
       IMPORTANT: Only respond with valid JSON. Do not include extra commentary.`);
 
       // Call the model
-      const response = await chat.call([systemPrompt, humanPrompt]);
+      const response = await chat.invoke([systemPrompt, humanPrompt]);
       
-      return response.text; // Should be the JSON string if the model followed instructions
+      return response.content; // Should be the JSON string if the model followed instructions
     }
 
     // =======================
@@ -255,6 +260,9 @@ additional explanations what you change are nice to have but not necessary.
 
   <style>
     /* Minimal styling for demonstration */
+    body {
+      font-family: monospace;
+    }
     #imageContainer {
       position: relative;
       display: inline-block;
@@ -270,24 +278,24 @@ additional explanations what you change are nice to have but not necessary.
   </style>
 </head>
 
-<body>
+<body class="bg-gray-100 p-6">
 
-<h1>LangChain Bounding Box Validator Demo</h1>
+<h1 class="text-2xl font-bold mb-4">LangChain Bounding Box Validator Demo</h1>
 
-<div>
-  <label for="imageInput">Select an image:</label>
-  <input type="file" id="imageInput" accept="image/*">
+<div class="mb-4">
+  <label for="imageInput" class="block mb-2">Select an image:</label>
+  <input type="file" id="imageInput" accept="image/*" class="p-2 border rounded">
 </div>
 
-<div id="imageContainer">
-  <img id="preview" alt="Image preview will appear here">
+<div id="imageContainer" class="mb-4">
+  <img id="preview" alt="Image preview will appear here" class="border">
 </div>
 
-<div>
-  <button id="validateBtn">Send to AI & Validate</button>
+<div class="mb-4">
+  <button id="validateBtn" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Send to AI & Validate</button>
 </div>
 
-<div id="result" style="margin-top: 1em; white-space: pre-wrap;"></div>
+<div id="result" class="p-4 bg-white rounded shadow mt-4 whitespace-pre-wrap"></div>
 
 </body>
 </html>
