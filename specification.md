@@ -41,7 +41,7 @@ You want a single-page HTML web application (SPA) that:
    * Must require `width`, `height`, and `bounding_boxes` in `image`.  
    * `width`/`height`: integers.  
    * `bounding_boxes`: an array of 0 or more bounding box objects.  
-     * Each bounding box has `x_min`, `y_min`, `x_max`, `y_max` in `[0, 1]`.  
+     * Each bounding box has `x_min`, `y_min`, `x_max`, `y_max` as integer pixel coordinates.  
      * Each box must have a non-empty `labels` array.  
        * Each label has `name` (string) and `confidence` (integer in `[0, 100]`).  
 5. **Flexibility and Extensibility**
@@ -101,10 +101,10 @@ The AI returns a JSON structure that *should* look like:
     "height": 768,  
     "bounding\_boxes": \[  
       {  
-        "x\_min": 0.1,  
-        "y\_min": 0.2,  
-        "x\_max": 0.3,  
-        "y\_max": 0.4,  
+        "x\_min": 200,  
+        "y\_min": 100,  
+        "x\_max": 400,  
+        "y\_max": 300,  
         "labels": \[  
           { "name": "dog", "confidence": 95 },  
           { "name": "running", "confidence": 80 }  
@@ -136,7 +136,7 @@ The AI returns a JSON structure that *should* look like:
      * `"image.width is required and must be an integer"`  
      * `"bounding_boxes[0].labels must contain at least one item"`, etc.  
 4. **Coordinate Constraints**  
-   * The schema ensures numeric values for the bounding boxes. If `x_min`, `y_min`, etc. is outside `[0,1]`, you’ll get a validation error.  
+   * The schema ensures integer values for the bounding boxes. If `x_min`, `y_min`, etc. is negative, you'll get a validation error.  
    * The user is informed that the bounding box data is invalid if that happens.  
 5. **Confidence Score Issues**  
    * If `confidence` is not an integer in `[0, 100]`, the validator flags it.
@@ -170,24 +170,20 @@ Below is the final schema you decided on. Store it in your project (e.g., `bbox-
             "type": "object",  
             "properties": {  
               "x\_min": {  
-                "type": "number",  
-                "minimum": 0,  
-                "maximum": 1  
+                "type": "integer",  
+                "minimum": 0  
               },  
               "y\_min": {  
-                "type": "number",  
-                "minimum": 0,  
-                "maximum": 1  
+                "type": "integer",  
+                "minimum": 0  
               },  
               "x\_max": {  
-                "type": "number",  
-                "minimum": 0,  
-                "maximum": 1  
+                "type": "integer",  
+                "minimum": 0  
               },  
               "y\_max": {  
-                "type": "number",  
-                "minimum": 0,  
-                "maximum": 1  
+                "type": "integer",  
+                "minimum": 0  
               },  
               "labels": {  
                 "type": "array",  
@@ -243,7 +239,7 @@ The testing strategy should cover:
    * **Edge Cases**:  
      * Zero bounding boxes.  
      * Multiple bounding boxes.  
-     * Large images with bounding boxes close to the edges (e.g., `x_min = 0`, `x_max = 1`).  
+     * Large images with bounding boxes at the edges (e.g., `x_min = 0` or `x_max = image width`).  
      * Confidence \= 0 or 100\.  
      * Malformed JSON or incorrect fields.  
    * **Network Errors**: Simulate timeouts or 500 errors from the AI service.  
