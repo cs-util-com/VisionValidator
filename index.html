@@ -93,13 +93,16 @@ additional explanations what you change are nice to have but not necessary.
     });
     const validateBoundingBoxes = ajv.compile(boundingBoxSchema);
 
+    // DOM elements cache
+    let elements;
+    let uploadedImageData = null;
+
     // =======================
     // 2) Set up LangChain (OpenAI example)
     // =======================
     // Helper function to call the model with a prompt that references the image
     async function requestBoundingBoxes(base64Image) {
-      // Get the current API key from the input field
-      const apiKey = document.getElementById("apiKeyInput").value.trim();
+      const apiKey = elements.apiKeyInput.value.trim();
       
       if (!apiKey) {
         throw new Error("Please enter your OpenAI API key");
@@ -139,122 +142,114 @@ IMPORTANT: Only respond with valid JSON.`
 
       // Call the model
       const response = await chat.invoke([systemPrompt, humanPrompt]);
-      
-      return response.content; // Should be the JSON string if the model followed instructions
+      return response.content;
     }
 
     // =======================
     // 3) UI Handling
     // =======================
-    let uploadedImageData = null;
-    window.addEventListener("DOMContentLoaded", () => {
-      const fileInput = document.getElementById("imageInput");
-      const preview = document.getElementById("preview");
-      const resultArea = document.getElementById("result");
-      const validateBtn = document.getElementById("validateBtn");
+    function initApp() {
+      // Cache DOM elements for better performance
+      elements = {
+        fileInput: document.getElementById("imageInput"),
+        preview: document.getElementById("preview"),
+        resultArea: document.getElementById("result"),
+        validateBtn: document.getElementById("validateBtn"),
+        apiKeyInput: document.getElementById("apiKeyInput"),
+        imageContainer: document.getElementById("imageContainer")
+      };
 
-      // 3a) Handle image file selection
-      fileInput.addEventListener("change", (event) => {
+      // Handle image file selection
+      elements.fileInput.addEventListener("change", (event) => {
         const file = event.target.files[0];
         if (!file) return;
 
         // Preview the image
         const reader = new FileReader();
-        reader.onload = function(e) {
-          preview.src = e.target.result;
+        reader.onload = (e) => {
+          elements.preview.src = e.target.result;
+          uploadedImageData = e.target.result; // Store the base64 data
         };
         reader.readAsDataURL(file);
-
-        // Also store the base64 data for sending to LLM
-        // (We use the same data URL that appears in the preview)
-        reader.onloadend = function() {
-          uploadedImageData = reader.result;
-        };
       });
 
-      // 3b) Validate bounding boxes (calls the AI, then checks JSON)
-      validateBtn.addEventListener("click", async () => {
-        resultArea.innerHTML = "Requesting bounding boxes from AI...";
-        if (!uploadedImageData) {
-          resultArea.innerHTML = "No image selected!";
+      // Validate bounding boxes
+      elements.validateBtn.addEventListener("click", handleValidation);
+
+      // Load API key from local storage
+      const savedApiKey = localStorage.getItem("openai_api_key");
+      if (savedApiKey) {
+        elements.apiKeyInput.value = savedApiKey;
+      }
+      
+      // Save API key when changed
+      elements.apiKeyInput.addEventListener("change", () => {
+        localStorage.setItem("openai_api_key", elements.apiKeyInput.value);
+      });
+    }
+
+    // Handle validation button click
+    async function handleValidation() {
+      elements.resultArea.innerHTML = "Requesting bounding boxes from AI...";
+      
+      if (!uploadedImageData) {
+        elements.resultArea.innerHTML = "No image selected!";
+        return;
+      }
+
+      try {
+        // Call the LLM with the image data
+        const rawResponse = await requestBoundingBoxes(uploadedImageData);
+
+        // Parse JSON response
+        let jsonResponse;
+        try {
+          jsonResponse = JSON.parse(rawResponse);
+        } catch (e) {
+          elements.resultArea.innerHTML = `<p>AI response is not valid JSON:</p><pre>${rawResponse}</pre>`;
           return;
         }
 
-        try {
-          // 1) Call the LLM (or vision model) with the image data
-          const rawResponse = await requestBoundingBoxes(uploadedImageData);
-
-          // 2) Attempt to parse JSON
-          let jsonResponse;
-          try {
-            jsonResponse = JSON.parse(rawResponse);
-          } catch (e) {
-            resultArea.innerHTML = `<p>AI response is not valid JSON:</p><pre>${rawResponse}</pre>`;
-            return;
-          }
-
-          // 3) Validate against schema
-          const valid = validateBoundingBoxes(jsonResponse);
-          if (!valid) {
-            // Show validation errors
-            const errors = validateBoundingBoxes.errors;
-            const errorMessages = errors.map(err => `${err.instancePath} ${err.message}`).join("<br>");
-            resultArea.innerHTML = `
-              <p>Validation FAILED:</p>
-              <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
-              <p>Errors:</p>
-              <div style="color:red">${errorMessages}</div>
-            `;
-          } else {
-            // Show success, display bounding boxes
-            resultArea.innerHTML = `
-              <p>Validation SUCCESS!</p>
-              <p>JSON (formatted):</p>
-              <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
-            `;
+        // Validate against schema
+        const valid = validateBoundingBoxes(jsonResponse);
+        if (!valid) {
+          const errors = validateBoundingBoxes.errors;
+          const errorMessages = errors.map(err => `${err.instancePath} ${err.message}`).join("<br>");
+          elements.resultArea.innerHTML = `
+            <p>Validation FAILED:</p>
+            <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
+            <p>Errors:</p>
+            <div style="color:red">${errorMessages}</div>
+          `;
+        } else {
+          elements.resultArea.innerHTML = `
+            <p>Validation SUCCESS!</p>
+            <p>JSON (formatted):</p>
+            <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
+          `;
 
             // OPTIONAL: If you want to draw bounding boxes on the preview,
             // you could do it here. For a quick approach, you can use a
             // <canvas> or absolutely positioned <div>s on top of the <img>.
             // We'll show a quick (optional) example.
-            drawBoundingBoxes(jsonResponse);
-          }
-
-        } catch (error) {
-          console.error(error);
-          resultArea.innerHTML = `<p>Something went wrong: ${error.message}</p>`;
+          drawBoundingBoxes(jsonResponse);
         }
-      });
-
-      // Load API key from local storage if available
-      const apiKeyInput = document.getElementById("apiKeyInput");
-      const savedApiKey = localStorage.getItem("openai_api_key");
-      
-      if (savedApiKey) {
-        apiKeyInput.value = savedApiKey;
+      } catch (error) {
+        console.error(error);
+        elements.resultArea.innerHTML = `<p>Something went wrong: ${error.message}</p>`;
       }
-      
-      // Save API key to local storage when changed
-      apiKeyInput.addEventListener("change", () => {
-        localStorage.setItem("openai_api_key", apiKeyInput.value);
-      });
-    });
+    }
 
     // =======================
     // 4) Optional: Draw bounding boxes
     // =======================
     function drawBoundingBoxes(json) {
-      const container = document.getElementById("imageContainer");
       // Remove any existing bounding box overlays
-      const oldBoxes = document.querySelectorAll(".bbox-overlay");
-      oldBoxes.forEach(b => b.remove());
+      document.querySelectorAll(".bbox-overlay").forEach(b => b.remove());
 
-      const { width, height, bounding_boxes } = json.image;
-      const preview = document.getElementById("preview");
-
-      // The preview might not be shown at the original resolution. We find the displayed size:
-      const displayedWidth = preview.clientWidth;
-      const displayedHeight = preview.clientHeight;
+      const { bounding_boxes } = json.image;
+      const displayedWidth = elements.preview.clientWidth;
+      const displayedHeight = elements.preview.clientHeight;
 
       bounding_boxes.forEach(box => {
         // Normalized coords from 0..1 => multiply by displayed dimension
@@ -279,9 +274,12 @@ IMPORTANT: Only respond with valid JSON.`
           div.appendChild(labelSpan);
         }
 
-        container.appendChild(div);
+        elements.imageContainer.appendChild(div);
       });
     }
+
+    // Initialize when DOM is ready
+    window.addEventListener("DOMContentLoaded", initApp);
   </script>
 </head>
 
