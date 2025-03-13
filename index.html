@@ -3,6 +3,7 @@
 - This is a template for a single-page HTML web app.
 - A monospace font should be used.
 - No backend; all data is stored locally.
+- tailwindcss should be used for styling.
 
 Main user stories:
 - ...
@@ -17,131 +18,276 @@ additional explanations what you change are nice to have but not necessary.
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Decoupled Modules Example with Person Class</title>
-  <!-- Favicon: A white box --> <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23fff'/%3E%3C/svg%3E" type="image/svg+xml">
-  <!-- Added Tailwind CSS via CDN -->
+  <meta charset="utf-8" />
+  <title>LangChain Bounding Box Validator</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @view-transition {
-      navigation: auto;
-    }
-    
-    nav a[aria-current="page"]:after {
-      border-color: white;
-      view-transition-name: posts-nav;
-    }
-    
-    /* Old stuff going out */
-    ::view-transition-old(posts-nav) {
-      animation: fade 0.2s linear forwards;
-      height: 100%;
-    }
-    
-    /* New stuff coming in */
-    ::view-transition-new(posts-nav) {
-      animation: fade 0.3s linear reverse;
-      height: 100%;
-    }
-    
-    @keyframes fade {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
-  </style>
-  <script>
-    // Only use if browser supports View Transitions
-    if (document.startViewTransition) {
-      window.addEventListener('click', (e) => {
-        // Only handle internal links
-        if (e.target.tagName === 'A' && e.target.origin === window.location.origin) {
-          e.preventDefault();
-          document.startViewTransition(() => {
-            window.location.href = e.target.href;
-          });
+  <!-- 
+    In production, you may want to pin specific versions or bundle these dependencies.
+    The lines below illustrate direct CDN usage for demonstration only.
+  -->
+  <!-- Ajv for JSON schema validation -->
+  <script src="https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.min.js"></script>
+  
+  <!-- Example: unpkg link to LangChain.js (this might not be the exact version you need).
+       For the latest usage, see official docs: https://github.com/hwchase17/langchainjs -->
+  <script type="module">
+    import { ChatOpenAI } from "https://unpkg.com/langchain@0.0.36/dist/chat_models/openai.js";
+    import { HumanChatMessage, SystemChatMessage } from "https://unpkg.com/langchain@0.0.36/dist/schema/index.js";
+
+    // =======================
+    // 1) Define our JSON Schema
+    // =======================
+    const boundingBoxSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://example.com/my-bbox-schema.json",
+      type: "object",
+      title: "Image Bounding Box Schema",
+      properties: {
+        image: {
+          type: "object",
+          properties: {
+            width: { type: "integer", minimum: 1 },
+            height: { type: "integer", minimum: 1 },
+            bounding_boxes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  x_min: { type: "number", minimum: 0, maximum: 1 },
+                  y_min: { type: "number", minimum: 0, maximum: 1 },
+                  x_max: { type: "number", minimum: 0, maximum: 1 },
+                  y_max: { type: "number", minimum: 0, maximum: 1 },
+                  labels: {
+                    type: "array",
+                    minItems: 1,
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        confidence: { type: "integer", minimum: 0, maximum: 100 }
+                      },
+                      required: ["name", "confidence"],
+                      additionalProperties: true
+                    }
+                  }
+                },
+                required: ["x_min", "y_min", "x_max", "y_max", "labels"],
+                additionalProperties: true
+              }
+            }
+          },
+          required: ["width", "height", "bounding_boxes"],
+          additionalProperties: true
         }
+      },
+      required: ["image"],
+      additionalProperties: true
+    };
+
+    // Create an Ajv instance for validation
+    const ajv = new Ajv();
+    const validateBoundingBoxes = ajv.compile(boundingBoxSchema);
+
+    // =======================
+    // 2) Set up LangChain (OpenAI example)
+    // =======================
+    // Make sure to set your own OPENAI_API_KEY as an environment variable 
+    // or in a safe location. For demonstration, we read from a global variable 
+    // (this won't work in all environments).
+    const chat = new ChatOpenAI({
+      openAIApiKey: "", // <-- Enter your API key here
+      temperature: 0
+    });
+
+    // Helper function to call the model with a prompt that references the image
+    async function requestBoundingBoxes(base64Image) {
+      // This is a simplistic prompt. Real usage might differ:
+      const systemPrompt = new SystemChatMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
+      
+      // For demonstration, we do a textual prompt describing the image. 
+      // If you had a specialized model that can handle images, you'd supply 
+      // the base64 data or a URL differently.
+      const humanPrompt = new HumanChatMessage(`Here is an image in base64:\n\n${base64Image}\n\nReturn a JSON with the following schema:
+      ${JSON.stringify(boundingBoxSchema, null, 2)}
+      IMPORTANT: Only respond with valid JSON. Do not include extra commentary.`);
+
+      // Call the model
+      const response = await chat.call([systemPrompt, humanPrompt]);
+      
+      return response.text; // Should be the JSON string if the model followed instructions
+    }
+
+    // =======================
+    // 3) UI Handling
+    // =======================
+    let uploadedImageData = null;
+    window.addEventListener("DOMContentLoaded", () => {
+      const fileInput = document.getElementById("imageInput");
+      const preview = document.getElementById("preview");
+      const resultArea = document.getElementById("result");
+      const validateBtn = document.getElementById("validateBtn");
+
+      // 3a) Handle image file selection
+      fileInput.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Preview the image
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          preview.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+
+        // Also store the base64 data for sending to LLM
+        // (We use the same data URL that appears in the preview)
+        reader.onloadend = function() {
+          uploadedImageData = reader.result;
+        };
+      });
+
+      // 3b) Validate bounding boxes (calls the AI, then checks JSON)
+      validateBtn.addEventListener("click", async () => {
+        resultArea.innerHTML = "Requesting bounding boxes from AI...";
+        if (!uploadedImageData) {
+          resultArea.innerHTML = "No image selected!";
+          return;
+        }
+
+        try {
+          // 1) Call the LLM (or vision model) with the image data
+          const rawResponse = await requestBoundingBoxes(uploadedImageData);
+
+          // 2) Attempt to parse JSON
+          let jsonResponse;
+          try {
+            jsonResponse = JSON.parse(rawResponse);
+          } catch (e) {
+            resultArea.innerHTML = `<p>AI response is not valid JSON:</p><pre>${rawResponse}</pre>`;
+            return;
+          }
+
+          // 3) Validate against schema
+          const valid = validateBoundingBoxes(jsonResponse);
+          if (!valid) {
+            // Show validation errors
+            const errors = validateBoundingBoxes.errors;
+            const errorMessages = errors.map(err => `${err.instancePath} ${err.message}`).join("<br>");
+            resultArea.innerHTML = `
+              <p>Validation FAILED:</p>
+              <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
+              <p>Errors:</p>
+              <div style="color:red">${errorMessages}</div>
+            `;
+          } else {
+            // Show success, display bounding boxes
+            resultArea.innerHTML = `
+              <p>Validation SUCCESS!</p>
+              <p>JSON (formatted):</p>
+              <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
+            `;
+
+            // OPTIONAL: If you want to draw bounding boxes on the preview,
+            // you could do it here. For a quick approach, you can use a
+            // <canvas> or absolutely positioned <div>s on top of the <img>.
+            // We'll show a quick (optional) example.
+            drawBoundingBoxes(jsonResponse);
+          }
+
+        } catch (error) {
+          console.error(error);
+          resultArea.innerHTML = `<p>Something went wrong: ${error.message}</p>`;
+        }
+      });
+    });
+
+    // =======================
+    // 4) Optional: Draw bounding boxes
+    // =======================
+    function drawBoundingBoxes(json) {
+      const container = document.getElementById("imageContainer");
+      // Remove any existing bounding box overlays
+      const oldBoxes = document.querySelectorAll(".bbox-overlay");
+      oldBoxes.forEach(b => b.remove());
+
+      const { width, height, bounding_boxes } = json.image;
+      const preview = document.getElementById("preview");
+
+      // The preview might not be shown at the original resolution. We find the displayed size:
+      const displayedWidth = preview.clientWidth;
+      const displayedHeight = preview.clientHeight;
+
+      bounding_boxes.forEach(box => {
+        // Normalized coords from 0..1 => multiply by displayed dimension
+        const x = box.x_min * displayedWidth;
+        const y = box.y_min * displayedHeight;
+        const w = (box.x_max - box.x_min) * displayedWidth;
+        const h = (box.y_max - box.y_min) * displayedHeight;
+
+        // Create a bounding box div
+        const div = document.createElement("div");
+        div.classList.add("bbox-overlay");
+        div.style.position = "absolute";
+        div.style.border = "2px solid red";
+        div.style.pointerEvents = "none";
+        div.style.left = x + "px";
+        div.style.top = y + "px";
+        div.style.width = w + "px";
+        div.style.height = h + "px";
+
+        // Create label overlay as well (optional)
+        if (box.labels && box.labels.length > 0) {
+          const labelSpan = document.createElement("span");
+          labelSpan.textContent = box.labels.map(lbl => `${lbl.name}(${lbl.confidence})`).join(", ");
+          labelSpan.style.position = "absolute";
+          labelSpan.style.backgroundColor = "rgba(255,255,255,0.7)";
+          labelSpan.style.fontSize = "12px";
+          labelSpan.style.padding = "2px 4px";
+          labelSpan.style.top = "-1.5em";
+          labelSpan.style.left = "0";
+          div.appendChild(labelSpan);
+        }
+
+        container.appendChild(div);
       });
     }
   </script>
+
+  <style>
+    /* Minimal styling for demonstration */
+    #imageContainer {
+      position: relative;
+      display: inline-block;
+    }
+    #preview {
+      max-width: 400px;
+      height: auto;
+      display: block;
+    }
+    .bbox-overlay {
+      box-sizing: border-box;
+    }
+  </style>
 </head>
-<body class="font-mono p-8 bg-gray-50">
-  <div class="max-w-4xl mx-auto">
-    <header class="mb-8">
-      <h1 class="text-3xl font-bold text-blue-600 mb-4">Template Web App</h1>
-      <nav class="bg-blue-600 text-white p-4 rounded-lg mb-4">
-        <a href="index.html" class="mr-6 hover:underline font-bold relative" aria-current="page">
-          Home
-          <span class="absolute bottom-0 left-0 w-full h-0.5 bg-white"></span>
-        </a>
-        <a href="features.html" class="mr-6 hover:underline">Features</a>
-        <a href="about.html" class="hover:underline">About</a>
-      </nav>
-      <div class="bg-blue-100 border-l-4 border-blue-500 p-4 mb-6">
-        <p class="text-sm text-blue-700">This is a Tailwind CSS demonstration with modular JavaScript.</p>
-      </div>
-    </header>
-    
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-      <!-- Card 1 -->
-      <div class="bg-white p-6 rounded-lg shadow-md">
-        <h2 class="text-xl font-bold mb-4 text-gray-800">Greeting Card</h2>
-        <p class="text-gray-600 mb-4">Click the button below to greet the person.</p>
-        <button id="greetBtn" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300">
-          Greet
-        </button>
-      </div>
-      
-      <!-- Card 2 -->
-      <div class="bg-white p-6 rounded-lg shadow-md">
-        <h2 class="text-xl font-bold mb-4 text-gray-800">Tailwind Features</h2>
-        <ul class="list-disc pl-5 space-y-2 text-gray-600">
-          <li>Responsive design with <span class="font-bold text-blue-500">breakpoints</span></li>
-          <li>Utility-first CSS framework</li>
-          <li>Customizable with configuration</li>
-        </ul>
-        <div class="mt-4">
-          <div class="flex gap-2">
-            <span class="bg-red-200 text-red-800 text-xs p-1 rounded">Tag</span>
-            <span class="bg-green-200 text-green-800 text-xs p-1 rounded">Utility</span>
-            <span class="bg-yellow-200 text-yellow-800 text-xs p-1 rounded">Responsive</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="bg-white p-6 rounded-lg shadow">
-      <h2 class="text-xl font-bold mb-4 text-gray-800">Interactive Components</h2>
-      <div class="mb-4">
-        <label class="block text-gray-700 text-sm font-bold mb-2" for="username">
-          Username
-        </label>
-        <input class="w-full p-2 border rounded text-gray-700 focus:outline-none focus:shadow-outline" id="username" type="text" placeholder="Username">
-      </div>
-      <div class="flex justify-between">
-        <button class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none transition">
-          Save
-        </button>
-        <button class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none transition">
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Load the main module -->
-  <script type="module">
 
-    import { tellBirthday } from './utils.js';
-    import { Person } from './person.js';
+<body>
 
-    // Create a new Person instance with values defined in the HTML.
-    const person = new Person('Alice', 40);
-    document.getElementById('greetBtn').addEventListener('click', () => {
-      alert(tellBirthday(person));
-    });
+<h1>LangChain Bounding Box Validator Demo</h1>
 
-  </script>
+<div>
+  <label for="imageInput">Select an image:</label>
+  <input type="file" id="imageInput" accept="image/*">
+</div>
+
+<div id="imageContainer">
+  <img id="preview" alt="Image preview will appear here">
+</div>
+
+<div>
+  <button id="validateBtn">Send to AI & Validate</button>
+</div>
+
+<div id="result" style="margin-top: 1em; white-space: pre-wrap;"></div>
 
 </body>
 </html>
