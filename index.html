@@ -53,10 +53,10 @@ additional explanations what you change are nice to have but not necessary.
               items: {
                 type: "object",
                 properties: {
-                  x_min: { type: "number", minimum: 0, maximum: 1 },
-                  y_min: { type: "number", minimum: 0, maximum: 1 },
-                  x_max: { type: "number", minimum: 0, maximum: 1 },
-                  y_max: { type: "number", minimum: 0, maximum: 1 },
+                  x_min: { type: "integer", minimum: 0 },
+                  y_min: { type: "integer", minimum: 0 },
+                  x_max: { type: "integer", minimum: 0 },
+                  y_max: { type: "integer", minimum: 0 },
                   labels: {
                     type: "array",
                     minItems: 1,
@@ -126,9 +126,9 @@ additional explanations what you change are nice to have but not necessary.
             text: `Analyze this image and return bounding boxes for all visible objects. 
 Return a JSON with the following schema (simplified):
 - image: object with width, height, and bounding_boxes
-- bounding_boxes: array of objects with x_min, y_min, x_max, y_max (all 0-1), and labels
+- bounding_boxes: array of objects with x_min, y_min, x_max, y_max (all in pixel coordinates), and labels
 - labels: array with name and confidence (0-100)
-IMPORTANT: Only respond with valid JSON.`
+IMPORTANT: Only respond with valid JSON. Coordinates must be in pixel values, not normalized.`
           },
           {
             type: "image_url",
@@ -268,15 +268,18 @@ IMPORTANT: Only respond with valid JSON.`
       // No boxes to draw
       if (!json.image || !json.image.bounding_boxes) return;
       
-      const { bounding_boxes } = json.image;
+      const { bounding_boxes, width, height } = json.image;
       
       // Draw each bounding box
       bounding_boxes.forEach(box => {
-        // Calculate pixel coordinates from normalized (0-1) coordinates
-        const x = box.x_min * displayedWidth;
-        const y = box.y_min * displayedHeight;
-        const w = (box.x_max - box.x_min) * displayedWidth;
-        const h = (box.y_max - box.y_min) * displayedHeight;
+        // Scale pixel coordinates to match displayed image size
+        const scaleX = displayedWidth / width;
+        const scaleY = displayedHeight / height;
+        
+        const x = box.x_min * scaleX;
+        const y = box.y_min * scaleY;
+        const w = (box.x_max - box.x_min) * scaleX;
+        const h = (box.y_max - box.y_min) * scaleY;
 
         // Draw rectangle
         ctx.strokeStyle = 'red';
