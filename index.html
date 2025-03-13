@@ -276,8 +276,8 @@ IMPORTANT: Only respond with valid JSON. Coordinates MUST be pixel coordinates.`
       }
 
       // Match canvas size to image
-      const displayedWidth = elements.preview.clientWidth;
-      const displayedHeight = elements.preview.clientHeight;
+      const displayedWidth = elements.preview.offsetWidth;
+      const displayedHeight = elements.preview.offsetHeight;
       canvas.width = displayedWidth;
       canvas.height = displayedHeight;
       canvas.style.width = displayedWidth + 'px';
@@ -292,8 +292,10 @@ IMPORTANT: Only respond with valid JSON. Coordinates MUST be pixel coordinates.`
       
       const { bounding_boxes, width, height } = json.image;
       
+      console.log(`Drawing ${bounding_boxes.length} boxes. Image: ${width}x${height}, Display: ${displayedWidth}x${displayedHeight}`);
+      
       // Draw each bounding box
-      bounding_boxes.forEach(box => {
+      bounding_boxes.forEach((box, index) => {
         // Scale pixel coordinates to match displayed image size
         const scaleX = displayedWidth / width;
         const scaleY = displayedHeight / height;
@@ -303,31 +305,33 @@ IMPORTANT: Only respond with valid JSON. Coordinates MUST be pixel coordinates.`
         const w = (box.x_max - box.x_min) * scaleX;
         const h = (box.y_max - box.y_min) * scaleY;
 
-        // Draw rectangle
-        ctx.strokeStyle = 'red';
-        ctx.lineWidth = 2;
+        console.log(`Box ${index}: Original (${box.x_min},${box.y_min},${box.x_max},${box.y_max}), Scaled (${x},${y},${w},${h})`);
+
+        // Draw rectangle with vibrant color
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFFF00', '#00FFFF'];
+        const color = colors[index % colors.length];
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
         ctx.strokeRect(x, y, w, h);
 
         // Draw label if available
         if (box.labels && box.labels.length > 0) {
-          const label = box.labels.map(lbl => `${lbl.name}(${lbl.confidence})`).join(", ");
+          const label = box.labels.map(lbl => `${lbl.name}(${lbl.confidence}%)`).join(", ");
           
           // Style for label
-          ctx.font = '12px monospace';
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.font = 'bold 14px monospace';
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
           const metrics = ctx.measureText(label);
-          const textHeight = 14; // Approximate height for the font
+          const textHeight = 16; // Approximate height for the font
           
           // Background for text
-          ctx.fillRect(x, y - textHeight - 4, metrics.width + 6, textHeight + 4);
+          ctx.fillRect(x, Math.max(0, y - textHeight - 6), metrics.width + 8, textHeight + 6);
           
           // Draw text
-          ctx.fillStyle = 'black';
-          ctx.fillText(label, x + 3, y - 4);
+          ctx.fillStyle = color;
+          ctx.fillText(label, x + 4, y - 4);
         }
       });
-      
-      // Keep the existing text display result in place
     }
 
     // Initialize when DOM is ready
