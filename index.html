@@ -265,10 +265,7 @@ IMPORTANT: Only respond with valid JSON.`
 
         // Create a bounding box div
         const div = document.createElement("div");
-        div.classList.add("bbox-overlay");
-        div.style.position = "absolute";
-        div.style.border = "2px solid red";
-        div.style.pointerEvents = "none";
+        div.classList.add("bbox-overlay", "absolute", "border-2", "border-red-500", "pointer-events-none");
         div.style.left = x + "px";
         div.style.top = y + "px";
         div.style.width = w + "px";
@@ -278,12 +275,7 @@ IMPORTANT: Only respond with valid JSON.`
         if (box.labels && box.labels.length > 0) {
           const labelSpan = document.createElement("span");
           labelSpan.textContent = box.labels.map(lbl => `${lbl.name}(${lbl.confidence})`).join(", ");
-          labelSpan.style.position = "absolute";
-          labelSpan.style.backgroundColor = "rgba(255,255,255,0.7)";
-          labelSpan.style.fontSize = "12px";
-          labelSpan.style.padding = "2px 4px";
-          labelSpan.style.top = "-1.5em";
-          labelSpan.style.left = "0";
+          labelSpan.classList.add("absolute", "bg-white/70", "text-xs", "px-1", "py-0.5", "-top-6", "left-0");
           div.appendChild(labelSpan);
         }
 
@@ -291,44 +283,13 @@ IMPORTANT: Only respond with valid JSON.`
       });
     }
   </script>
-
-  <style>
-    /* Minimal styling for demonstration */
-    body {
-      font-family: monospace;
-    }
-    #imageContainer {
-      position: relative;
-      display: inline-block;
-    }
-    #preview {
-      max-width: 400px;
-      height: auto;
-      display: block;
-    }
-    .bbox-overlay {
-      box-sizing: border-box;
-    }
-    .api-key-container {
-      margin-bottom: 1rem;
-      padding: 0.75rem;
-      background-color: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 0.25rem;
-    }
-    .api-key-container input {
-      width: 100%;
-      padding: 0.5rem;
-      margin-top: 0.25rem;
-    }
-  </style>
 </head>
 
-<body class="bg-gray-100 p-6">
+<body class="bg-gray-100 p-6 font-mono">
 
 <h1 class="text-2xl font-bold mb-4">LangChain Bounding Box Validator Demo</h1>
 
-<div class="api-key-container">
+<div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded">
   <label for="apiKeyInput" class="block mb-2">OpenAI API Key:</label>
   <input type="password" id="apiKeyInput" placeholder="Enter your OpenAI API key" class="p-2 border rounded w-full">
   <p class="text-sm text-gray-500 mt-1">Your API key is stored locally in your browser.</p>
@@ -339,8 +300,8 @@ IMPORTANT: Only respond with valid JSON.`
   <input type="file" id="imageInput" accept="image/*" class="p-2 border rounded">
 </div>
 
-<div id="imageContainer" class="mb-4">
-  <img id="preview" alt="Image preview will appear here" class="border">
+<div id="imageContainer" class="mb-4 relative inline-block">
+  <img id="preview" alt="Image preview will appear here" class="border max-w-md">
 </div>
 
 <div class="mb-4">
