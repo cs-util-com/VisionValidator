@@ -113,7 +113,8 @@ additional explanations what you change are nice to have but not necessary.
         openAIApiKey: apiKey,
         modelName: "gpt-4o", // Specify vision model
         maxTokens: 1024,
-        temperature: 0
+        temperature: 0,
+        response_format: { "type": "json_object" } // Force JSON response format
       });
       
       const systemPrompt = new SystemMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
@@ -226,8 +227,19 @@ IMPORTANT: Only respond with valid JSON. Coordinates MUST be pixel coordinates.`
         // Parse JSON response
         let jsonResponse;
         try {
-          jsonResponse = JSON.parse(rawResponse);
+          // Clean up the response if it has markdown code block formatting
+          let cleanResponse = rawResponse;
+          
+          // Check for markdown code blocks and remove them
+          const jsonBlockRegex = /^```(?:json)?\s*([\s\S]*?)```\s*$/;
+          const match = rawResponse.match(jsonBlockRegex);
+          if (match && match[1]) {
+            cleanResponse = match[1].trim();
+          }
+          
+          jsonResponse = JSON.parse(cleanResponse);
         } catch (e) {
+          console.error(e);
           elements.resultArea.innerHTML = `<p>AI response is not valid JSON:</p><pre>${rawResponse}</pre>`;
           return;
         }
