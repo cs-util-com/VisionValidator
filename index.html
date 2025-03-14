@@ -30,6 +30,8 @@ additional explanations what you change are nice to have but not necessary.
   <script type="module">
     // Direct imports from CDN with specific versions
     import { ChatOpenAI } from "https://cdn.jsdelivr.net/npm/@langchain/openai@0.0.14/+esm";
+    import { ChatGoogleGenerativeAI } from "https://cdn.jsdelivr.net/npm/@langchain/google-genai@0.0.4/+esm";
+    import { ChatAnthropic } from "https://cdn.jsdelivr.net/npm/@langchain/anthropic@0.0.3/+esm";
     import { HumanMessage, SystemMessage } from "https://cdn.jsdelivr.net/npm/@langchain/core@0.1.17/messages/+esm";
     // Import standard Ajv without depending on draft-2020 support
     import Ajv from "https://cdn.jsdelivr.net/npm/ajv@8.12.0/+esm";
@@ -103,28 +105,14 @@ additional explanations what you change are nice to have but not necessary.
     // Helper function to call the model with a prompt that references the image
     async function requestBoundingBoxes(base64Image) {
       const apiKey = elements.apiKeyInput.value.trim();
+      const modelType = elements.modelSelect.value;
       
       if (!apiKey) {
-        throw new Error("Please enter your OpenAI API key");
+        throw new Error(`Please enter your ${getProviderName(modelType)} API key`);
       }
       
-      // Create a new instance with the current API key
-      const chat = new ChatOpenAI({
-        openAIApiKey: apiKey,
-        modelName: "gpt-4o", // Specify vision model
-        maxTokens: 1024,
-        temperature: 0,
-        response_format: { "type": "json_object" } // Force JSON response format
-      });
-      
-      const systemPrompt = new SystemMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
-      
-      // Create a multimodal message with structured content
-      const humanPrompt = new HumanMessage({
-        content: [
-          {
-            type: "text",
-            text: `Analyze this image and identify all distinct visible objects with precise bounding boxes. 
+      // Shared prompt text for all models
+      const promptText = `Analyze this image and identify all distinct visible objects with precise bounding boxes. 
 
 INSTRUCTIONS FOR ACCURATE BOUNDING BOXES:
 1. Use exact pixel coordinates for all boundaries
@@ -175,7 +163,16 @@ IMPORTANT:
 - Coordinates MUST be accurate pixel coordinates corresponding to the image dimensions
 - All numerical values must be integers (no floating point)
 - Ensure all required fields are included
-- Aim for high precision in object boundary detection`
+- Aim for high precision in object boundary detection`;
+      
+      const systemPrompt = new SystemMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
+      
+      // Create a multimodal message with structured content
+      const humanPrompt = new HumanMessage({
+        content: [
+          {
+            type: "text",
+            text: promptText
           },
           {
             type: "image_url",
@@ -187,9 +184,48 @@ IMPORTANT:
         ]
       });
 
-      // Call the model
-      const response = await chat.invoke([systemPrompt, humanPrompt]);
+      let response;
+      
+      // Select the appropriate model based on user selection
+      if (modelType === "openai") {
+        const chat = new ChatOpenAI({
+          openAIApiKey: apiKey,
+          modelName: "gpt-4o", 
+          maxTokens: 1024,
+          temperature: 0,
+          response_format: { "type": "json_object" } // Force JSON response format
+        });
+        response = await chat.invoke([systemPrompt, humanPrompt]);
+      } 
+      else if (modelType === "gemini") {
+        const chat = new ChatGoogleGenerativeAI({
+          apiKey: apiKey,
+          model: "gemini-1.5-flash",
+          maxOutputTokens: 1024,
+          temperature: 0
+        });
+        response = await chat.invoke([humanPrompt]);
+      } 
+      else if (modelType === "claude") {
+        const chat = new ChatAnthropic({
+          apiKey: apiKey,
+          model: "claude-3-sonnet-20240229",
+          temperature: 0
+        });
+        response = await chat.invoke([humanPrompt]);
+      }
+      
       return response.content;
+    }
+    
+    // Helper function to get provider name for display purposes
+    function getProviderName(modelType) {
+      switch(modelType) {
+        case "openai": return "OpenAI";
+        case "gemini": return "Google";
+        case "claude": return "Anthropic";
+        default: return "API";
+      }
     }
 
     // =======================
@@ -203,7 +239,9 @@ IMPORTANT:
         resultArea: document.getElementById("result"),
         validateBtn: document.getElementById("validateBtn"),
         apiKeyInput: document.getElementById("apiKeyInput"),
-        imageContainer: document.getElementById("imageContainer")
+        imageContainer: document.getElementById("imageContainer"),
+        modelSelect: document.getElementById("modelSelect"),
+        apiKeyLabel: document.getElementById("apiKeyLabel")
       };
 
       // Handle image file selection
@@ -223,16 +261,33 @@ IMPORTANT:
       // Validate bounding boxes
       elements.validateBtn.addEventListener("click", handleValidation);
 
-      // Load API key from local storage
-      const savedApiKey = localStorage.getItem("openai_api_key");
-      if (savedApiKey) {
-        elements.apiKeyInput.value = savedApiKey;
-      }
+      // Load API key for current model from local storage
+      updateApiKeyField();
+      
+      // Handle model change
+      elements.modelSelect.addEventListener("change", updateApiKeyField);
       
       // Save API key when changed
       elements.apiKeyInput.addEventListener("change", () => {
-        localStorage.setItem("openai_api_key", elements.apiKeyInput.value);
+        const modelType = elements.modelSelect.value;
+        localStorage.setItem(`${modelType}_api_key`, elements.apiKeyInput.value);
       });
+    }
+    
+    // Update API key field based on selected model
+    function updateApiKeyField() {
+      const modelType = elements.modelSelect.value;
+      const providerName = getProviderName(modelType);
+      
+      // Update label
+      elements.apiKeyLabel.textContent = `${providerName} API Key:`;
+      
+      // Load saved API key for this model
+      const savedKey = localStorage.getItem(`${modelType}_api_key`) || "";
+      elements.apiKeyInput.value = savedKey;
+      
+      // Update placeholder
+      elements.apiKeyInput.placeholder = `Enter your ${providerName} API key`;
     }
 
     // Handle validation button click
@@ -380,7 +435,16 @@ IMPORTANT:
 <h1 class="text-2xl font-bold mb-4">LangChain Bounding Box Validator Demo</h1>
 
 <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded">
-  <label for="apiKeyInput" class="block mb-2">OpenAI API Key:</label>
+  <label for="modelSelect" class="block mb-2">Select AI Model:</label>
+  <select id="modelSelect" class="p-2 border rounded w-full">
+    <option value="openai">OpenAI GPT-4o</option>
+    <option value="gemini">Google Gemini</option>
+    <option value="claude">Anthropic Claude 3</option>
+  </select>
+</div>
+
+<div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded">
+  <label id="apiKeyLabel" for="apiKeyInput" class="block mb-2">OpenAI API Key:</label>
   <input type="password" id="apiKeyInput" placeholder="Enter your OpenAI API key" class="p-2 border rounded w-full">
   <p class="text-sm text-gray-500 mt-1">Your API key is stored locally in your browser.</p>
 </div>
