@@ -124,7 +124,18 @@ additional explanations what you change are nice to have but not necessary.
         content: [
           {
             type: "text",
-            text: `Analyze this image and return bounding boxes for all visible objects. 
+            text: `Analyze this image and identify all distinct visible objects with precise bounding boxes. 
+
+INSTRUCTIONS FOR ACCURATE BOUNDING BOXES:
+1. Use exact pixel coordinates for all boundaries
+2. Bounding boxes should tightly frame each object (minimal empty space)
+3. Ensure x_min < x_max and y_min < y_max
+4. Each box must have accurate dimensions relative to the image size
+5. For overlapping objects, create separate bounding boxes for each distinct object
+6. Be comprehensive - detect as many relevant objects as possible
+7. Assign confidence scores that realistically reflect certainty (100 = absolute certainty)
+8. For complex objects, focus on the main object rather than its parts unless parts are significant
+
 Return a JSON with the following schema:
 - image: object with width (integer), height (integer), and bounding_boxes array
 - bounding_boxes: array of objects with x_min, y_min, x_max, y_max, and labels
@@ -137,27 +148,40 @@ Example format:
     "height": 768,
     "bounding_boxes": [
       {
-        "x_min": 200,
-        "y_min": 100,
-        "x_max": 900,
+        "x_min": 253,
+        "y_min": 137,
+        "x_max": 913,
         "y_max": 768,
         "labels": [
           { "name": "dog", "confidence": 95 },
-          { "name": "animal", "confidence": 100 },
-          { "name": "running", "confidence": 60 }
+          { "name": "animal", "confidence": 100 }
+        ]
+      },
+      {
+        "x_min": 52,
+        "y_min": 37,
+        "x_max": 154,
+        "y_max": 181,
+        "labels": [
+          { "name": "ball", "confidence": 98 }
         ]
       }
     ]
   }
 }
 
-IMPORTANT: Only respond with valid JSON. Coordinates MUST be pixel coordinates.`
+IMPORTANT: 
+- Only respond with valid JSON
+- Coordinates MUST be accurate pixel coordinates corresponding to the image dimensions
+- All numerical values must be integers (no floating point)
+- Ensure all required fields are included
+- Aim for high precision in object boundary detection`
           },
           {
             type: "image_url",
             image_url: {
               url: base64Image,
-              detail: "auto"
+              detail: "high" // Request high detail analysis
             }
           }
         ]
