@@ -116,15 +116,29 @@ additional explanations what you change are nice to have but not necessary.
       // Shared prompt text for all models
       const promptText = `Analyze this image and identify all distinct visible objects with precise bounding boxes. 
 
+STEP-BY-STEP PROCESS:
+1. First, carefully scan the entire image and identify ALL visible objects. Create a comprehensive list.
+2. For each identified object, determine its exact pixel coordinates (x_min, y_min, x_max, y_max).
+3. Cross-check your final JSON to ensure EVERY object from your initial list has a corresponding bounding box.
+4. Verify that boxes meet all requirements in the instructions below.
+
 INSTRUCTIONS FOR ACCURATE BOUNDING BOXES:
 1. Use exact pixel coordinates for all boundaries
-2. Bounding boxes should tightly frame each object (minimal empty space)
-3. Ensure x_min < x_max and y_min < y_max
-4. Each box must have accurate dimensions relative to the image size
-5. For overlapping objects, create separate bounding boxes for each distinct object
-6. Be comprehensive - detect as many relevant objects as possible
-7. Assign confidence scores that realistically reflect certainty (100 = absolute certainty)
-8. For complex objects, focus on the main object rather than its parts unless parts are significant
+2. Bounding boxes MUST completely contain the entire object - no part of the object should extend outside the box
+3. While covering the entire object, boxes should still be as tight as possible with minimal empty space
+4. Ensure x_min < x_max and y_min < y_max
+5. Each box must have accurate dimensions relative to the image size
+6. Create separate bounding boxes for each distinct object - overlapping boxes are acceptable and often necessary
+7. If multiple instances of the same object type appear (e.g., several cars or people), create individual bounding boxes for EACH instance
+8. Be comprehensive - detect as many relevant objects as possible
+9. Assign confidence scores that realistically reflect certainty (100 = absolute certainty)
+10. For complex objects, focus on the main object rather than its parts unless parts are significant
+11. Include partially visible objects at image edges - make your best estimate of their boundaries
+12. For objects with unclear edges (like smoke, water, or shadows), approximate reasonable boundaries
+13. Don't ignore small objects if they're meaningful in the context of the image
+14. For groups of similar items (like a pile of books), you can provide both individual item boxes and a group box
+15. When text is important, treat it as an object with its own bounding box
+16. For objects at different depths, prioritize foreground objects but include background objects when distinguishable
 
 Return a JSON with the following schema:
 - image: object with width (integer), height (integer), and bounding_boxes array
@@ -165,7 +179,8 @@ IMPORTANT:
 - Coordinates MUST be accurate pixel coordinates corresponding to the image dimensions
 - All numerical values must be integers (no floating point)
 - Ensure all required fields are included
-- Aim for high precision in object boundary detection`;
+- Aim for high precision in object boundary detection
+- Double-check that your JSON includes ALL objects you identified in your initial scan`;
       
       const systemPrompt = new SystemMessage("You are a helpful vision model. Given an image, provide bounding box data in the specified JSON format.");
       
