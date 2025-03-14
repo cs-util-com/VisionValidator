@@ -98,6 +98,8 @@ additional explanations what you change are nice to have but not necessary.
     // DOM elements cache
     let elements;
     let uploadedImageData = null;
+    // Track loading state
+    let isProcessing = false;
 
     // =======================
     // 2) Set up LangChain (OpenAI example)
@@ -241,7 +243,8 @@ IMPORTANT:
         apiKeyInput: document.getElementById("apiKeyInput"),
         imageContainer: document.getElementById("imageContainer"),
         modelSelect: document.getElementById("modelSelect"),
-        apiKeyLabel: document.getElementById("apiKeyLabel")
+        apiKeyLabel: document.getElementById("apiKeyLabel"),
+        loadingIndicator: document.getElementById("loadingIndicator")
       };
 
       // Handle image file selection
@@ -249,11 +252,20 @@ IMPORTANT:
         const file = event.target.files[0];
         if (!file) return;
 
+        // Clear previous results and boxes when new image is selected
+        clearResults();
+
         // Preview the image
         const reader = new FileReader();
         reader.onload = (e) => {
           elements.preview.src = e.target.result;
           uploadedImageData = e.target.result; // Store the base64 data
+          
+          // Make sure image container has position relative for canvas positioning
+          elements.imageContainer.style.position = 'relative';
+        };
+        reader.onerror = () => {
+          elements.resultArea.innerHTML = "Error loading image. Please try again.";
         };
         reader.readAsDataURL(file);
       });
@@ -274,6 +286,17 @@ IMPORTANT:
       });
     }
     
+    // Clear results and bounding boxes
+    function clearResults() {
+      elements.resultArea.innerHTML = "";
+      // Clear any existing bounding boxes
+      const existingCanvas = document.getElementById('bbox-canvas');
+      if (existingCanvas) {
+        const ctx = existingCanvas.getContext('2d');
+        ctx.clearRect(0, 0, existingCanvas.width, existingCanvas.height);
+      }
+    }
+    
     // Update API key field based on selected model
     function updateApiKeyField() {
       const modelType = elements.modelSelect.value;
@@ -292,7 +315,7 @@ IMPORTANT:
 
     // Handle validation button click
     async function handleValidation() {
-      elements.resultArea.innerHTML = "Requesting bounding boxes from AI...";
+      if (isProcessing) return;
       
       if (!uploadedImageData) {
         elements.resultArea.innerHTML = "No image selected!";
@@ -300,6 +323,11 @@ IMPORTANT:
       }
 
       try {
+        isProcessing = true;
+        elements.validateBtn.disabled = true;
+        elements.validateBtn.innerText = "Processing...";
+        elements.resultArea.innerHTML = "Requesting bounding boxes from AI...";
+
         // Call the LLM with the image data
         const rawResponse = await requestBoundingBoxes(uploadedImageData);
 
@@ -350,6 +378,10 @@ IMPORTANT:
       } catch (error) {
         console.error(error);
         elements.resultArea.innerHTML = `<p>Something went wrong: ${error.message}</p>`;
+      } finally {
+        isProcessing = false;
+        elements.validateBtn.disabled = false;
+        elements.validateBtn.innerText = "Send to AI & Validate";
       }
     }
 
@@ -420,7 +452,7 @@ IMPORTANT:
           
           // Draw text
           ctx.fillStyle = color;
-          ctx.fillText(label, x + 4, y - 4);
+          ctx.fillText(label, x + 4, Math.max(textHeight, y - 4));
         }
       });
     }
@@ -461,6 +493,7 @@ IMPORTANT:
 
 <div class="mb-4">
   <button id="validateBtn" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Send to AI & Validate</button>
+  <div id="loadingIndicator" class="hidden mt-2 text-blue-500">Processing...</div>
 </div>
 
 <div id="result" class="p-4 bg-white rounded shadow mt-4 whitespace-pre-wrap"></div>
