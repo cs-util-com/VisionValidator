@@ -55,10 +55,10 @@ additional explanations what you change are nice to have but not necessary.
               items: {
                 type: "object",
                 properties: {
-                  x_min: { type: "number", minimum: 0, maximum: 1 },
-                  y_min: { type: "number", minimum: 0, maximum: 1 },
-                  x_max: { type: "number", minimum: 0, maximum: 1 },
-                  y_max: { type: "number", minimum: 0, maximum: 1 },
+                  x_min: { type: "integer", minimum: 0 },
+                  y_min: { type: "integer", minimum: 0 },
+                  x_max: { type: "integer", minimum: 0 },
+                  y_max: { type: "integer", minimum: 0 },
                   labels: {
                     type: "array",
                     minItems: 1,
@@ -117,7 +117,7 @@ additional explanations what you change are nice to have but not necessary.
       const promptText = `Analyze this image and identify all distinct visible objects with precise bounding boxes. 
 
 INSTRUCTIONS FOR ACCURATE BOUNDING BOXES:
-1. Use relative coordinates (0.0 to 1.0) for all boundaries, where 0,0 is the top-left corner and 1,1 is the bottom-right corner
+1. Use exact pixel coordinates for all boundaries
 2. Bounding boxes should tightly frame each object (minimal empty space)
 3. Ensure x_min < x_max and y_min < y_max
 4. Each box must have accurate dimensions relative to the image size
@@ -138,20 +138,20 @@ Example format:
     "height": 768,
     "bounding_boxes": [
       {
-        "x_min": 0.247,
-        "y_min": 0.178,
-        "x_max": 0.892,
-        "y_max": 1.0,
+        "x_min": 253,
+        "y_min": 137,
+        "x_max": 913,
+        "y_max": 768,
         "labels": [
           { "name": "dog", "confidence": 95 },
           { "name": "animal", "confidence": 100 }
         ]
       },
       {
-        "x_min": 0.051,
-        "y_min": 0.048,
-        "x_max": 0.150,
-        "y_max": 0.236,
+        "x_min": 52,
+        "y_min": 37,
+        "x_max": 154,
+        "y_max": 181,
         "labels": [
           { "name": "ball", "confidence": 98 }
         ]
@@ -162,8 +162,8 @@ Example format:
 
 IMPORTANT: 
 - Only respond with valid JSON
-- Coordinates MUST be relative values between 0.0 and 1.0
-- Coordinate values can be floating point (up to 3 decimal places for precision)
+- Coordinates MUST be accurate pixel coordinates corresponding to the image dimensions
+- All numerical values must be integers (no floating point)
 - Ensure all required fields are included
 - Aim for high precision in object boundary detection`;
       
@@ -419,13 +419,16 @@ IMPORTANT:
       
       // Draw each bounding box
       bounding_boxes.forEach((box, index) => {
-        // Convert relative coordinates to pixel coordinates for display
-        const x = box.x_min * displayedWidth;
-        const y = box.y_min * displayedHeight;
-        const w = (box.x_max - box.x_min) * displayedWidth;
-        const h = (box.y_max - box.y_min) * displayedHeight;
+        // Scale pixel coordinates to match displayed image size
+        const scaleX = displayedWidth / width;
+        const scaleY = displayedHeight / height;
+        
+        const x = box.x_min * scaleX;
+        const y = box.y_min * scaleY;
+        const w = (box.x_max - box.x_min) * scaleX;
+        const h = (box.y_max - box.y_min) * scaleY;
 
-        console.log(`Box ${index}: Relative (${box.x_min.toFixed(3)},${box.y_min.toFixed(3)},${box.x_max.toFixed(3)},${box.y_max.toFixed(3)}), Display (${x.toFixed(1)},${y.toFixed(1)},${w.toFixed(1)},${h.toFixed(1)})`);
+        console.log(`Box ${index}: Original (${box.x_min},${box.y_min},${box.x_max},${box.y_max}), Scaled (${x},${y},${w},${h})`);
 
         // Draw rectangle with vibrant color
         const colors = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFFF00', '#00FFFF'];
