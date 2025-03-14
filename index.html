@@ -310,6 +310,12 @@ IMPORTANT:
         const ctx = existingCanvas.getContext('2d');
         ctx.clearRect(0, 0, existingCanvas.width, existingCanvas.height);
       }
+      // Clear any existing heat map overlay
+      const heatmapCanvas = document.getElementById('heatmap-canvas');
+      if (heatmapCanvas) {
+        const ctx = heatmapCanvas.getContext('2d');
+        ctx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+      }
     }
     
     // Update API key field based on selected model
@@ -328,7 +334,17 @@ IMPORTANT:
       elements.apiKeyInput.placeholder = `Enter your ${providerName} API key`;
     }
 
-    // Handle validation button click
+    // =======================
+    // 4) Heat Map and Bounding Box Processing
+    // =======================
+    // Hardcode number of queries to run
+    const NUM_QUERIES = 5;
+    // Define block size for downsampling (10x10 pixels)
+    const BLOCK_SIZE = 10;
+    // Predefined colors for labels (used both for boxes and heat maps)
+    const labelColors = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFFF00', '#00FFFF'];
+
+    // Main handler for validation that now runs 5 queries
     async function handleValidation() {
       if (isProcessing) return;
       
@@ -343,53 +359,61 @@ IMPORTANT:
         elements.validateBtn.innerText = "Processing...";
         elements.resultArea.innerHTML = "Requesting bounding boxes from AI...";
 
-        // Call the LLM with the image data
-        const rawResponse = await requestBoundingBoxes(uploadedImageData);
+        // Run NUM_QUERIES queries in parallel and ignore failures
+        const queryPromises = [];
+        for (let i = 0; i < NUM_QUERIES; i++) {
+          queryPromises.push(requestBoundingBoxes(uploadedImageData).catch(error => {
+            console.error(`Query ${i+1} failed: ${error.message}`);
+            return null; // Skip failed queries
+          }));
+        }
+        const rawResponses = await Promise.all(queryPromises);
+        // Filter out failed (null) responses
+        const successfulResponses = rawResponses.filter(resp => resp !== null);
+        if (successfulResponses.length === 0) {
+          elements.resultArea.innerHTML = "All queries failed. Cannot generate heat map.";
+          return;
+        }
 
-        // Parse JSON response
-        let jsonResponse;
-        try {
-          // Clean up the response if it has markdown code block formatting
+        // Parse each successful response as JSON (cleaning markdown formatting if needed)
+        const jsonResponses = [];
+        for (const rawResponse of successfulResponses) {
           let cleanResponse = rawResponse;
-          
-          // Check for markdown code blocks and remove them
           const jsonBlockRegex = /^```(?:json)?\s*([\s\S]*?)```\s*$/;
           const match = rawResponse.match(jsonBlockRegex);
           if (match && match[1]) {
             cleanResponse = match[1].trim();
           }
-          
-          jsonResponse = JSON.parse(cleanResponse);
-        } catch (e) {
-          console.error(e);
-          elements.resultArea.innerHTML = `<p>AI response is not valid JSON:</p><pre>${rawResponse}</pre>`;
+          try {
+            const parsed = JSON.parse(cleanResponse);
+            // Validate schema for each response
+            if (!validateBoundingBoxes(parsed)) {
+              console.error("Validation errors:", validateBoundingBoxes.errors);
+              continue;
+            }
+            jsonResponses.push(parsed);
+          } catch (e) {
+            console.error("Error parsing JSON response:", e);
+          }
+        }
+
+        if (jsonResponses.length === 0) {
+          elements.resultArea.innerHTML = "No valid JSON responses received.";
           return;
         }
 
-        // Validate against schema
-        const valid = validateBoundingBoxes(jsonResponse);
-        if (!valid) {
-          const errors = validateBoundingBoxes.errors;
-          const errorMessages = errors.map(err => `${err.instancePath} ${err.message}`).join("<br>");
-          elements.resultArea.innerHTML = `
-            <p>Validation FAILED:</p>
-            <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
-            <p>Errors:</p>
-            <div style="color:red">${errorMessages}</div>
-          `;
-        } else {
-          elements.resultArea.innerHTML = `
-            <p>Validation SUCCESS!</p>
-            <p>JSON (formatted):</p>
-            <pre>${JSON.stringify(jsonResponse, null, 2)}</pre>
-          `;
+        // Display the last successful response JSON (formatted) in the result area
+        elements.resultArea.innerHTML = `
+          <p>Validation SUCCESS (from one response)!</p>
+          <p>JSON (formatted):</p>
+          <pre>${JSON.stringify(jsonResponses[jsonResponses.length - 1], null, 2)}</pre>
+        `;
 
-            // OPTIONAL: If you want to draw bounding boxes on the preview,
-            // you could do it here. For a quick approach, you can use a
-            // <canvas> or absolutely positioned <div>s on top of the <img>.
-            // We'll show a quick (optional) example.
-          drawBoundingBoxes(jsonResponse);
-        }
+        // Draw individual bounding boxes from the last successful response (for demonstration)
+        drawBoundingBoxes(jsonResponses[jsonResponses.length - 1]);
+
+        // Compute and draw the aggregated heat map overlay using all successful responses
+        drawAggregatedHeatMap(jsonResponses);
       } catch (error) {
         console.error(error);
         elements.resultArea.innerHTML = `<p>Something went wrong: ${error.message}</p>`;
@@ -400,11 +424,185 @@ IMPORTANT:
       }
     }
 
+    // Compute the aggregated heat maps per label and draw them
+    function drawAggregatedHeatMap(jsonResponses) {
+      // Assume all responses have the same image dimensions; take from the first valid one.
+      const imageWidth = jsonResponses[0].image.width;
+      const imageHeight = jsonResponses[0].image.height;
+      const gridCols = Math.ceil(imageWidth / BLOCK_SIZE);
+      const gridRows = Math.ceil(imageHeight / BLOCK_SIZE);
+      
+      // Object to hold per-label heat map grids (each grid is a 2D array of numbers)
+      const heatMaps = {};
+      
+      // Initialize heat map grids for each label encountered across all responses
+      // We will fill grids later on when processing each bounding box
+      function initGrid() {
+        const grid = [];
+        for (let r = 0; r < gridRows; r++) {
+          const row = new Array(gridCols).fill(0);
+          grid.push(row);
+        }
+        return grid;
+      }
+      
+      // Process each response's bounding boxes
+      jsonResponses.forEach(response => {
+        if (!response.image || !response.image.bounding_boxes) return;
+        response.image.bounding_boxes.forEach(box => {
+          // For each label in the bounding box
+          box.labels.forEach(lbl => {
+            // Normalize label to lowercase
+            const label = lbl.name.toLowerCase();
+            // If not already, initialize grid for this label
+            if (!heatMaps[label]) {
+              heatMaps[label] = initGrid();
+            }
+            // Determine the range of grid cells that the bounding box covers.
+            // We'll check each cell center to decide if it lies within the bounding box.
+            const xStart = Math.floor(box.x_min / BLOCK_SIZE);
+            const xEnd = Math.ceil(box.x_max / BLOCK_SIZE);
+            const yStart = Math.floor(box.y_min / BLOCK_SIZE);
+            const yEnd = Math.ceil(box.y_max / BLOCK_SIZE);
+            for (let r = yStart; r < yEnd; r++) {
+              for (let c = xStart; c < xEnd; c++) {
+                // Calculate center of the grid cell in image coordinates
+                const cellCenterX = c * BLOCK_SIZE + BLOCK_SIZE / 2;
+                const cellCenterY = r * BLOCK_SIZE + BLOCK_SIZE / 2;
+                if (cellCenterX >= box.x_min && cellCenterX <= box.x_max &&
+                    cellCenterY >= box.y_min && cellCenterY <= box.y_max) {
+                  // Add the uniform confidence value from this box to the cell
+                  // (Note: we add the raw confidence; later we will average by dividing by NUM_QUERIES)
+                  heatMaps[label][r][c] += lbl.confidence;
+                }
+              }
+            }
+          });
+        });
+      });
+      
+      // Average the contributions by dividing each cell by NUM_QUERIES (fixed maximum)
+      Object.keys(heatMaps).forEach(label => {
+        for (let r = 0; r < gridRows; r++) {
+          for (let c = 0; c < gridCols; c++) {
+            heatMaps[label][r][c] = heatMaps[label][r][c] / NUM_QUERIES;
+            // Clamp to maximum value of 100
+            if (heatMaps[label][r][c] > 100) heatMaps[label][r][c] = 100;
+          }
+        }
+        // Apply a simple Gaussian blur (or similar fast blur) to smooth the grid
+        heatMaps[label] = applyGaussianBlur(heatMaps[label], gridRows, gridCols);
+      });
+      
+      // Now draw the heat maps onto a dedicated canvas overlay
+      drawHeatMapOverlay(heatMaps, imageWidth, imageHeight);
+    }
+
+    // Apply a simple 3x3 Gaussian-like blur to a 2D grid
+    function applyGaussianBlur(grid, rows, cols) {
+      // Simple 3x3 kernel approximation
+      const kernel = [
+        [1/16, 2/16, 1/16],
+        [2/16, 4/16, 2/16],
+        [1/16, 2/16, 1/16]
+      ];
+      const blurred = [];
+      for (let r = 0; r < rows; r++) {
+        blurred[r] = [];
+        for (let c = 0; c < cols; c++) {
+          let sum = 0;
+          for (let kr = -1; kr <= 1; kr++) {
+            for (let kc = -1; kc <= 1; kc++) {
+              const rr = r + kr;
+              const cc = c + kc;
+              if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) {
+                sum += grid[rr][cc] * kernel[kr+1][kc+1];
+              }
+            }
+          }
+          blurred[r][c] = sum;
+        }
+      }
+      return blurred;
+    }
+
+    // Draw the heat map overlay for each label on a separate canvas
+    function drawHeatMapOverlay(heatMaps, imageWidth, imageHeight) {
+      // Get displayed image size and compute scaling factors
+      const displayedWidth = elements.preview.offsetWidth;
+      const displayedHeight = elements.preview.offsetHeight;
+      const scaleX = displayedWidth / imageWidth;
+      const scaleY = displayedHeight / imageHeight;
+
+      // Create or get the heat map canvas
+      let heatmapCanvas = document.getElementById('heatmap-canvas');
+      if (!heatmapCanvas) {
+        heatmapCanvas = document.createElement('canvas');
+        heatmapCanvas.id = 'heatmap-canvas';
+        heatmapCanvas.classList.add('absolute', 'top-0', 'left-0', 'pointer-events-none');
+        elements.imageContainer.appendChild(heatmapCanvas);
+      }
+      heatmapCanvas.width = displayedWidth;
+      heatmapCanvas.height = displayedHeight;
+      heatmapCanvas.style.width = displayedWidth + 'px';
+      heatmapCanvas.style.height = displayedHeight + 'px';
+
+      const ctx = heatmapCanvas.getContext('2d');
+      // Clear previous drawings
+      ctx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+      // Optionally, set a blur filter for a smoother visual effect
+      ctx.filter = "blur(2px)";
+
+      // For each label, draw its heat map
+      Object.keys(heatMaps).forEach((label, index) => {
+        // Get a base color for this label (cycle through predefined colors)
+        const baseColor = labelColors[index % labelColors.length];
+        // Convert the base color (hex) to RGB components
+        const rgb = hexToRgb(baseColor);
+        const grid = heatMaps[label];
+        const gridRows = grid.length;
+        const gridCols = grid[0].length;
+        // For each grid cell, draw a rectangle with opacity based on normalized confidence (0-100 fixed max)
+        for (let r = 0; r < gridRows; r++) {
+          for (let c = 0; c < gridCols; c++) {
+            // Normalize value (0 to 1)
+            const normVal = grid[r][c] / 100;
+            if (normVal <= 0.01) continue; // Skip nearly transparent cells
+            // Compute position and size in displayed coordinates
+            const x = c * BLOCK_SIZE * scaleX;
+            const y = r * BLOCK_SIZE * scaleY;
+            const w = BLOCK_SIZE * scaleX;
+            const h = BLOCK_SIZE * scaleY;
+            // Set fill style using the base color and the normalized value as alpha
+            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${normVal})`;
+            ctx.fillRect(x, y, w, h);
+          }
+        }
+      });
+      // Reset filter after drawing
+      ctx.filter = "none";
+    }
+
+    // Helper function to convert hex color to RGB object
+    function hexToRgb(hex) {
+      // Remove '#' if present
+      hex = hex.replace(/^#/, '');
+      if (hex.length === 3) {
+        hex = hex.split('').map(ch => ch + ch).join('');
+      }
+      const num = parseInt(hex, 16);
+      return {
+        r: (num >> 16) & 255,
+        g: (num >> 8) & 255,
+        b: num & 255
+      };
+    }
+
     // =======================
-    // 4) Optional: Draw bounding boxes
+    // 5) Optional: Draw bounding boxes (existing functionality)
     // =======================
     function drawBoundingBoxes(json) {
-      // Get or create canvas element
+      // Get or create canvas element for bounding boxes
       let canvas = document.getElementById('bbox-canvas');
       if (!canvas) {
         canvas = document.createElement('canvas');
@@ -446,7 +644,7 @@ IMPORTANT:
         console.log(`Box ${index}: Original (${box.x_min},${box.y_min},${box.x_max},${box.y_max}), Scaled (${x},${y},${w},${h})`);
 
         // Draw rectangle with vibrant color
-        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFFF00', '#00FFFF'];
+        const colors = labelColors;
         const color = colors[index % colors.length];
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
@@ -503,7 +701,7 @@ IMPORTANT:
 
 <div id="imageContainer" class="mb-4 relative inline-block">
   <img id="preview" alt="Image preview will appear here" class="border max-w-md">
-  <!-- Canvas will be dynamically inserted here -->
+  <!-- Canvas for bounding boxes and heat maps will be dynamically inserted here -->
 </div>
 
 <div class="mb-4">
