@@ -1,32 +1,73 @@
-# TemplateJs
-TemplateJs is a minimal single-page web app template designed for quick deployment. 
-It follows an AI-assisted iterative development process:
+# VisionValidator
 
-- User stories and requirements drive feature development.
-- Each iteration is a single commit for easy review.
-- AI-assisted coding minimizes manual intervention.
-- The focus is on defining clear requirements rather than manual coding.
+VisionValidator is a single-page web application that evaluates and compares how different AI vision models perform object detection tasks by returning bounding box data.
 
-This approach enables rapid prototyping and structured iteration.
+## Overview
 
-## Using the Template
-1. Fork this repository and open the fork via GitHub CodeSpaces
-2. Go to your repos Settings -> Pages and there in the "Branch" section select the main branch to be auto-deployed by GitHub for you
-3. If your fork is 
-   <br> github.com/**YourUserName**/**YourFork** 
-   <br> then your WebApp should now be live at 
-   <br> **YourUserName**.github.io/**YourFork** 
-4. Install VsCode plugins in CodeSpaces
-   - "**Live Server**" to render the resulting page including live updates while you edit etc
-   - "**GitHub Copilot**" to do smaller iterations inside of CodeSpaces
-5. Edit the index.html and regularly commit and push in CodeSpaces to "release" your latest app version 
+This tool helps developers, researchers and AI enthusiasts:
 
-## AI Iteration Workflow
-1. Copy `index.html` into ChatGPT.
-2. Modify or extend the requirements listed at the top
-3. Test the changes via Right-Click on the index.html -> "Open with Live Server"
-4. Clean up modifications done by the AI via the "Source Control" -> "Changes" UX of VsCode (in GitHub CodeSpaces)
-5. Commit
+- Test various AI vision models with your own images
+- Validate the returned bounding box data against a schema
+- Visualize object detection results with bounding boxes
+- Compare consistency across multiple queries with heat maps
+- Analyze contextual attributes identified in the image
 
-## Disclaimer
-TemplateJs is provided as-is. It is a general-purpose template and does not include domain-specific functionality. Use and modify as needed.
+## Features
+
+- **Multi-Model Support**: Works with OpenAI GPT-4o, Google Gemini, and Anthropic Claude 3
+- **Bounding Box Visualization**: Displays detected objects with colored bounding boxes
+- **Heat Map Generation**: Creates visual representations of AI consistency across multiple queries
+- **Schema Validation**: Ensures AI responses conform to a standardized format
+- **Secure API Key Management**: Stores API keys locally in your browser
+- **Multiple Query Analysis**: Makes 5 identical requests to analyze model consistency
+- **Response Comparison**: Toggle between different AI responses for the same image
+
+## Getting Started
+
+### Usage
+
+1. **Select an AI Model**: Choose between OpenAI GPT-4o, Google Gemini, or Anthropic Claude 3
+2. **Enter Your API Key**: Provide your API key for the selected service (stored locally in your browser)
+3. **Upload an Image**: Select any image you wish to analyze
+4. **Process the Image**: Click "Send to AI & Validate" to start analysis
+5. **View Results**: 
+   - See bounding boxes drawn on your image
+   - View the heat map showing detection consistency
+   - Toggle between different AI responses using the selector
+   - Review the full JSON response below
+
+### Requirements
+
+- Modern web browser (Chrome, Firefox, Safari, Edge)
+- API key for at least one of the supported AI services:
+  - [OpenAI API key](https://platform.openai.com/api-keys)
+  - [Google AI API key](https://aistudio.google.com/app/apikey)
+  - [Anthropic API key](https://console.anthropic.com/keys)
+
+## Technical Details
+
+VisionValidator is a frontend-only application built with:
+
+- HTML, JavaScript, and Tailwind CSS
+- LangChain.js for AI model integration
+- Ajv for JSON schema validation
+- Canvas API for visualization
+
+### Privacy Considerations
+
+- All processing happens in your browser
+- Images never touch our servers - they're sent directly from your browser to the AI provider
+- API keys are stored in your browser's localStorage and only sent to their respective providers
+
+## Examples
+
+### Use Cases
+
+- **AI Research**: Evaluate and compare different vision models
+- **Quality Assurance**: Test consistency of object detection across multiple queries
+- **Model Evaluation**: Determine which AI performs best for specific image types
+- **Educational Tool**: Learn about how AI systems interpret visual information
+
+## Contributing
+
+Contributions are welcome! Feel free to submit issues or pull requests.
