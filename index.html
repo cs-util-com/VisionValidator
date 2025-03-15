@@ -112,6 +112,8 @@ additional explanations what you change are nice to have but not necessary.
     let uploadedImageData = null;
     // Track loading state
     let isProcessing = false;
+    // Store all successful responses
+    let allResponses = [];
 
     // =======================
     // 2) Set up LangChain (OpenAI example)
@@ -296,7 +298,9 @@ IMPORTANT:
         imageContainer: document.getElementById("imageContainer"),
         modelSelect: document.getElementById("modelSelect"),
         apiKeyLabel: document.getElementById("apiKeyLabel"),
-        loadingIndicator: document.getElementById("loadingIndicator")
+        loadingIndicator: document.getElementById("loadingIndicator"),
+        responseSelector: document.getElementById("responseSelector"),
+        responseSelectorContainer: document.getElementById("responseSelectorContainer")
       };
 
       // Handle image file selection
@@ -335,6 +339,12 @@ IMPORTANT:
       elements.apiKeyInput.addEventListener("change", () => {
         const modelType = elements.modelSelect.value;
         localStorage.setItem(`${modelType}_api_key`, elements.apiKeyInput.value);
+      });
+
+      // Handle response selector change
+      elements.responseSelector.addEventListener("change", () => {
+        const selectedIndex = parseInt(elements.responseSelector.value);
+        drawSelectedResponse(selectedIndex);
       });
     }
     
@@ -395,6 +405,9 @@ IMPORTANT:
         elements.validateBtn.disabled = true;
         elements.validateBtn.innerText = "Processing...";
         elements.resultArea.innerHTML = "Requesting bounding boxes from AI...";
+        
+        // Hide response selector while processing
+        elements.responseSelectorContainer.classList.add("hidden");
 
         // Run NUM_QUERIES queries in parallel and ignore failures
         const queryPromises = [];
@@ -413,7 +426,7 @@ IMPORTANT:
         }
 
         // Parse each successful response as JSON (cleaning markdown formatting if needed)
-        const jsonResponses = [];
+        allResponses = []; // Reset stored responses
         for (const rawResponse of successfulResponses) {
           let cleanResponse = rawResponse;
           const jsonBlockRegex = /^```(?:json)?\s*([\s\S]*?)```\s*$/;
@@ -428,29 +441,32 @@ IMPORTANT:
               console.error("Validation errors:", validateBoundingBoxes.errors);
               continue;
             }
-            jsonResponses.push(parsed);
+            allResponses.push(parsed);
           } catch (e) {
             console.error("Error parsing JSON response:", e);
           }
         }
 
-        if (jsonResponses.length === 0) {
+        if (allResponses.length === 0) {
           elements.resultArea.innerHTML = "No valid JSON responses received.";
           return;
         }
 
         // Display the last successful response JSON (formatted) in the result area
         elements.resultArea.innerHTML = `
-          <p>Validation SUCCESS (from one response)!</p>
+          <p>Validation SUCCESS (showing response 1)!</p>
           <p>JSON (formatted):</p>
-          <pre>${JSON.stringify(jsonResponses[jsonResponses.length - 1], null, 2)}</pre>
+          <pre>${JSON.stringify(allResponses[0], null, 2)}</pre>
         `;
 
-        // Draw individual bounding boxes from the last successful response (for demonstration)
-        drawBoundingBoxes(jsonResponses[jsonResponses.length - 1]);
+        // Update response selector options
+        updateResponseSelector(allResponses.length);
+
+        // Draw initial bounding boxes from the first response
+        drawSelectedResponse(0);
 
         // Compute and draw the aggregated heat map overlay using all successful responses
-        drawAggregatedHeatMap(jsonResponses);
+        drawAggregatedHeatMap(allResponses);
       } catch (error) {
         console.error(error);
         elements.resultArea.innerHTML = `<p>Something went wrong: ${error.message}</p>`;
@@ -459,6 +475,38 @@ IMPORTANT:
         elements.validateBtn.disabled = false;
         elements.validateBtn.innerText = "Send to AI & Validate";
       }
+    }
+    
+    // Update response selector with available responses
+    function updateResponseSelector(count) {
+      // Clear existing options
+      elements.responseSelector.innerHTML = '';
+      
+      // Add new options
+      for (let i = 0; i < count; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Response ${i + 1}`;
+        elements.responseSelector.appendChild(option);
+      }
+      
+      // Show selector container
+      elements.responseSelectorContainer.classList.remove("hidden");
+    }
+    
+    // Draw selected response's bounding boxes
+    function drawSelectedResponse(index) {
+      if (!allResponses || index >= allResponses.length) return;
+      
+      // Draw the bounding boxes for the selected response
+      drawBoundingBoxes(allResponses[index]);
+      
+      // Update the JSON display in result area
+      elements.resultArea.innerHTML = `
+        <p>Showing response ${index + 1} of ${allResponses.length}</p>
+        <p>JSON (formatted):</p>
+        <pre>${JSON.stringify(allResponses[index], null, 2)}</pre>
+      `;
     }
 
     // Compute the aggregated heat maps per label and draw them
@@ -744,6 +792,12 @@ IMPORTANT:
 <div class="mb-4">
   <button id="validateBtn" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Send to AI & Validate</button>
   <div id="loadingIndicator" class="hidden mt-2 text-blue-500">Processing...</div>
+</div>
+
+<div id="responseSelectorContainer" class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded hidden">
+  <label for="responseSelector" class="block mb-2">View Individual Response:</label>
+  <select id="responseSelector" class="p-2 border rounded w-full"></select>
+  <p class="text-sm text-gray-500 mt-1">Switch between individual AI responses to see different bounding box interpretations.</p>
 </div>
 
 <div id="result" class="p-4 bg-white rounded shadow mt-4 whitespace-pre-wrap"></div>
