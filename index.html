@@ -113,6 +113,9 @@ additional explanations what you change are nice to have but not necessary.
         throw new Error(`Please enter your ${getProviderName(modelType)} API key`);
       }
       
+      // Generate a random temperature between 0.1 and 0.5 for some response variation
+      const randomTemp = 0.1 + Math.random() * 0.4;
+      
       // Shared prompt text for all models
       const promptText = `Analyze this image and identify all distinct visible objects with precise bounding boxes. 
 
@@ -209,7 +212,7 @@ IMPORTANT:
           openAIApiKey: apiKey,
           modelName: "gpt-4o", 
           maxTokens: 1024,
-          temperature: 0,
+          temperature: randomTemp,
           response_format: { "type": "json_object" } // Force JSON response format
         });
         response = await chat.invoke([systemPrompt, humanPrompt]);
@@ -219,7 +222,7 @@ IMPORTANT:
           apiKey: apiKey,
           model: "gemini-1.5-flash",
           maxOutputTokens: 1024,
-          temperature: 0
+          temperature: randomTemp
         });
         response = await chat.invoke([humanPrompt]);
       } 
@@ -227,7 +230,7 @@ IMPORTANT:
         const chat = new ChatAnthropic({
           apiKey: apiKey,
           model: "claude-3-sonnet-20240229",
-          temperature: 0
+          temperature: randomTemp
         });
         response = await chat.invoke([humanPrompt]);
       }
